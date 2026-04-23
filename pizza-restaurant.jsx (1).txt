@@ -1,0 +1,744 @@
+import { useState, useEffect, useCallback } from "react";
+
+// ─── PERSISTENT STORAGE HELPERS ───────────────────────────────────────────────
+const DB = {
+  async get(key) {
+    try { const r = await window.storage.get(key); return r ? JSON.parse(r.value) : null; } catch { return null; }
+  },
+  async set(key, val) {
+    try { await window.storage.set(key, JSON.stringify(val)); } catch(e) { console.error(e); }
+  }
+};
+
+// ─── DEFAULT DATA ──────────────────────────────────────────────────────────────
+const DEFAULT_MENU = [
+  { id: 1, category: "🍕 Klassik", name: "Margarita", price: 45000, desc: "Pomidor, mozzarella, reyhan" },
+  { id: 2, category: "🍕 Klassik", name: "Pepperoni", price: 55000, desc: "Pepperoni kolbasa, mozzarella" },
+  { id: 3, category: "🍕 Klassik", name: "Barbekyu", price: 58000, desc: "Tovuq, BBQ sous, piyoz" },
+  { id: 4, category: "🔥 Premium", name: "Qo'ziqorin", price: 62000, desc: "4 xil qo'ziqorin, krem sous" },
+  { id: 5, category: "🔥 Premium", name: "Dengiz mahsulotlari", price: 75000, desc: "Krevetka, kalmor, losos" },
+  { id: 6, category: "🔥 Premium", name: "Vegetarian", price: 52000, desc: "Qo'shimcha sabzavotlar, pesto" },
+  { id: 7, category: "🥤 Ichimliklar", name: "Coca-Cola", price: 8000, desc: "0.5L" },
+  { id: 8, category: "🥤 Ichimliklar", name: "Pepsi", price: 8000, desc: "0.5L" },
+  { id: 9, category: "🥤 Ichimliklar", name: "Limoniya", price: 12000, desc: "Uy limonadi 0.5L" },
+  { id: 10, category: "🍰 Desert", name: "Tiramisu", price: 25000, desc: "Italyan deserti" },
+];
+
+const fmt = (n) => n?.toLocaleString("uz-UZ") + " so'm";
+
+// ─── NOTIFICATION TOAST ────────────────────────────────────────────────────────
+function Toast({ msg, type }) {
+  if (!msg) return null;
+  const colors = { success: "#22c55e", error: "#ef4444", info: "#f59e0b" };
+  return (
+    <div style={{
+      position: "fixed", top: 24, right: 24, zIndex: 9999,
+      background: colors[type] || "#333", color: "#fff",
+      padding: "12px 20px", borderRadius: 12, fontWeight: 600,
+      fontSize: 14, boxShadow: "0 8px 32px rgba(0,0,0,0.3)",
+      animation: "slideIn 0.3s ease"
+    }}>{msg}</div>
+  );
+}
+
+// ─── LOGIN PAGE ────────────────────────────────────────────────────────────────
+function LoginPage({ onLogin }) {
+  const [role, setRole] = useState("waiter");
+  const [pass, setPass] = useState("");
+  const [err, setErr] = useState("");
+
+  const handle = () => {
+    if (role === "admin" && pass !== "admin123") { setErr("Parol noto'g'ri!"); return; }
+    onLogin(role);
+  };
+
+  return (
+    <div style={{
+      minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
+      background: "linear-gradient(135deg, #1a0a00 0%, #3d1200 50%, #1a0a00 100%)",
+      fontFamily: "'Georgia', serif"
+    }}>
+      <style>{`
+        @keyframes slideIn { from { transform: translateX(40px); opacity:0 } to { transform: translateX(0); opacity:1 } }
+        @keyframes fadeUp { from { transform: translateY(30px); opacity:0 } to { transform: translateY(0); opacity:1 } }
+        @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.05)} }
+        * { box-sizing: border-box; margin:0; padding:0; }
+        input:focus { outline: none; }
+        ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: #1a0a00; }
+        ::-webkit-scrollbar-thumb { background: #c0392b; border-radius: 3px; }
+      `}</style>
+
+      <div style={{
+        background: "rgba(255,255,255,0.05)", backdropFilter: "blur(20px)",
+        border: "1px solid rgba(255,100,0,0.3)", borderRadius: 24,
+        padding: "48px 40px", width: 380, animation: "fadeUp 0.6s ease",
+        boxShadow: "0 32px 80px rgba(0,0,0,0.5)"
+      }}>
+        <div style={{ textAlign: "center", marginBottom: 36 }}>
+          <div style={{ fontSize: 64, marginBottom: 8, animation: "pulse 2s infinite" }}>🍕</div>
+          <h1 style={{ color: "#ff6b2b", fontSize: 28, fontWeight: 700, letterSpacing: 1 }}>PizzaHouse</h1>
+          <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 13, marginTop: 4 }}>Boshqaruv tizimi</p>
+        </div>
+
+        <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+          {["waiter", "admin"].map(r => (
+            <button key={r} onClick={() => { setRole(r); setPass(""); setErr(""); }} style={{
+              flex: 1, padding: "12px 0", borderRadius: 12, border: "none", cursor: "pointer",
+              background: role === r ? "#ff6b2b" : "rgba(255,255,255,0.08)",
+              color: role === r ? "#fff" : "rgba(255,255,255,0.5)",
+              fontWeight: 600, fontSize: 14, transition: "all 0.2s"
+            }}>
+              {r === "waiter" ? "🧑‍🍳 Ofitsan" : "👑 Admin"}
+            </button>
+          ))}
+        </div>
+
+        {role === "admin" && (
+          <div style={{ marginBottom: 16 }}>
+            <input
+              type="password" placeholder="Admin paroli..."
+              value={pass} onChange={e => { setPass(e.target.value); setErr(""); }}
+              onKeyDown={e => e.key === "Enter" && handle()}
+              style={{
+                width: "100%", padding: "14px 16px", borderRadius: 12,
+                border: `1px solid ${err ? "#ef4444" : "rgba(255,255,255,0.15)"}`,
+                background: "rgba(255,255,255,0.07)", color: "#fff", fontSize: 15
+              }}
+            />
+            {err && <p style={{ color: "#ef4444", fontSize: 12, marginTop: 6 }}>{err}</p>}
+            <p style={{ color: "rgba(255,255,255,0.3)", fontSize: 11, marginTop: 6 }}>Hint: admin123</p>
+          </div>
+        )}
+
+        <button onClick={handle} style={{
+          width: "100%", padding: "15px 0", borderRadius: 12, border: "none",
+          background: "linear-gradient(90deg, #ff6b2b, #e74c3c)",
+          color: "#fff", fontSize: 16, fontWeight: 700, cursor: "pointer",
+          boxShadow: "0 8px 24px rgba(255,107,43,0.4)", transition: "transform 0.15s"
+        }}
+          onMouseDown={e => e.currentTarget.style.transform = "scale(0.97)"}
+          onMouseUp={e => e.currentTarget.style.transform = "scale(1)"}
+        >
+          Kirish →
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── WAITER VIEW ───────────────────────────────────────────────────────────────
+function WaiterView({ tables, menu, orders, onOrder, onLogout }) {
+  const [selectedTable, setSelectedTable] = useState(null);
+  const [cart, setCart] = useState([]);
+  const [note, setNote] = useState("");
+
+  const tableOrders = (tId) => orders.filter(o => o.tableId === tId && o.status !== "cancelled" && o.status !== "paid");
+  const hasOrders = (tId) => tableOrders(tId).length > 0;
+
+  const addToCart = (item) => {
+    setCart(prev => {
+      const ex = prev.find(c => c.id === item.id);
+      return ex ? prev.map(c => c.id === item.id ? { ...c, qty: c.qty + 1 } : c)
+        : [...prev, { ...item, qty: 1 }];
+    });
+  };
+
+  const removeFromCart = (id) => setCart(prev => prev.filter(c => c.id !== id));
+
+  const submitOrder = () => {
+    if (!selectedTable || cart.length === 0) return;
+    const total = cart.reduce((s, c) => s + c.price * c.qty, 0);
+    onOrder({ tableId: selectedTable, items: cart, note, total });
+    setCart([]); setNote(""); setSelectedTable(null);
+  };
+
+  const categories = [...new Set(menu.map(m => m.category))];
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#0f0500", color: "#fff", fontFamily: "Georgia, serif" }}>
+      {/* Header */}
+      <div style={{
+        background: "linear-gradient(90deg, #1a0a00, #2d0f00)",
+        borderBottom: "1px solid rgba(255,107,43,0.2)",
+        padding: "16px 24px", display: "flex", justifyContent: "space-between", alignItems: "center"
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ fontSize: 28 }}>🍕</span>
+          <div>
+            <div style={{ color: "#ff6b2b", fontWeight: 700, fontSize: 18 }}>PizzaHouse</div>
+            <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 11 }}>Ofitsan paneli</div>
+          </div>
+        </div>
+        <button onClick={onLogout} style={{
+          background: "rgba(255,255,255,0.08)", border: "none", color: "rgba(255,255,255,0.6)",
+          padding: "8px 16px", borderRadius: 8, cursor: "pointer", fontSize: 13
+        }}>Chiqish</button>
+      </div>
+
+      <div style={{ display: "flex", height: "calc(100vh - 65px)" }}>
+        {/* Tables */}
+        <div style={{ width: 200, borderRight: "1px solid rgba(255,107,43,0.15)", padding: 16, overflowY: "auto" }}>
+          <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 11, marginBottom: 12, textTransform: "uppercase", letterSpacing: 1 }}>Stollar</p>
+          {tables.map(t => {
+            const busy = hasOrders(t.id);
+            const active = selectedTable === t.id;
+            return (
+              <button key={t.id} onClick={() => { setSelectedTable(t.id); setCart([]); }} style={{
+                width: "100%", marginBottom: 8, padding: "14px 12px", borderRadius: 12,
+                border: `2px solid ${active ? "#ff6b2b" : busy ? "rgba(255,165,0,0.4)" : "rgba(255,255,255,0.08)"}`,
+                background: active ? "rgba(255,107,43,0.2)" : busy ? "rgba(255,165,0,0.08)" : "rgba(255,255,255,0.04)",
+                color: "#fff", cursor: "pointer", textAlign: "left", transition: "all 0.2s"
+              }}>
+                <div style={{ fontWeight: 700, fontSize: 14 }}>Stol {t.number}</div>
+                <div style={{ fontSize: 11, color: busy ? "#ffa500" : "rgba(255,255,255,0.3)", marginTop: 2 }}>
+                  {busy ? `${tableOrders(t.id).length} buyurtma` : "Bo'sh"}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Menu */}
+        <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
+          {!selectedTable ? (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", flexDirection: "column", gap: 12 }}>
+              <div style={{ fontSize: 64, opacity: 0.3 }}>👆</div>
+              <p style={{ color: "rgba(255,255,255,0.3)", fontSize: 16 }}>Stol tanlang</p>
+            </div>
+          ) : (
+            <>
+              <h2 style={{ color: "#ff6b2b", marginBottom: 16, fontSize: 20 }}>Stol {tables.find(t => t.id === selectedTable)?.number} — Menyu</h2>
+              {categories.map(cat => (
+                <div key={cat} style={{ marginBottom: 24 }}>
+                  <p style={{ color: "#ffa500", fontSize: 12, letterSpacing: 2, marginBottom: 10, textTransform: "uppercase" }}>{cat}</p>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 10 }}>
+                    {menu.filter(m => m.category === cat).map(item => {
+                      const inCart = cart.find(c => c.id === item.id);
+                      return (
+                        <div key={item.id} onClick={() => addToCart(item)} style={{
+                          background: inCart ? "rgba(255,107,43,0.15)" : "rgba(255,255,255,0.04)",
+                          border: `1px solid ${inCart ? "rgba(255,107,43,0.5)" : "rgba(255,255,255,0.08)"}`,
+                          borderRadius: 12, padding: "14px 16px", cursor: "pointer",
+                          transition: "all 0.2s", position: "relative"
+                        }}>
+                          {inCart && (
+                            <div style={{
+                              position: "absolute", top: 8, right: 8, background: "#ff6b2b",
+                              color: "#fff", borderRadius: "50%", width: 22, height: 22,
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              fontSize: 12, fontWeight: 700
+                            }}>{inCart.qty}</div>
+                          )}
+                          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>{item.name}</div>
+                          <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 11, marginBottom: 8 }}>{item.desc}</div>
+                          <div style={{ color: "#ff6b2b", fontWeight: 700, fontSize: 15 }}>{fmt(item.price)}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+
+        {/* Cart */}
+        {selectedTable && (
+          <div style={{ width: 260, borderLeft: "1px solid rgba(255,107,43,0.15)", padding: 16, display: "flex", flexDirection: "column" }}>
+            <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 11, marginBottom: 12, textTransform: "uppercase", letterSpacing: 1 }}>Savat</p>
+
+            {/* Active orders */}
+            {tableOrders(selectedTable).length > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                <p style={{ color: "#ffa500", fontSize: 11, marginBottom: 8 }}>⏳ Faol buyurtmalar</p>
+                {tableOrders(selectedTable).map(o => (
+                  <div key={o.id} style={{
+                    background: "rgba(255,165,0,0.08)", border: "1px solid rgba(255,165,0,0.2)",
+                    borderRadius: 8, padding: "8px 10px", marginBottom: 6, fontSize: 12
+                  }}>
+                    <div style={{ color: "rgba(255,255,255,0.7)" }}>{o.items.map(i => `${i.name}×${i.qty}`).join(", ")}</div>
+                    <div style={{ color: "#ffa500", marginTop: 2 }}>{fmt(o.total)}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div style={{ flex: 1, overflowY: "auto" }}>
+              {cart.length === 0 ? (
+                <p style={{ color: "rgba(255,255,255,0.2)", fontSize: 13, textAlign: "center", marginTop: 24 }}>Taom tanlang</p>
+              ) : (
+                cart.map(c => (
+                  <div key={c.id} style={{
+                    display: "flex", justifyContent: "space-between", alignItems: "center",
+                    padding: "10px 0", borderBottom: "1px solid rgba(255,255,255,0.06)"
+                  }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>{c.name} ×{c.qty}</div>
+                      <div style={{ color: "#ff6b2b", fontSize: 12 }}>{fmt(c.price * c.qty)}</div>
+                    </div>
+                    <button onClick={() => removeFromCart(c.id)} style={{
+                      background: "rgba(239,68,68,0.2)", border: "none", color: "#ef4444",
+                      width: 24, height: 24, borderRadius: 6, cursor: "pointer", fontSize: 14
+                    }}>×</button>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {cart.length > 0 && (
+              <div style={{ marginTop: 12 }}>
+                <textarea placeholder="Izoh (ixtiyoriy)..." value={note} onChange={e => setNote(e.target.value)}
+                  style={{
+                    width: "100%", padding: "10px 12px", borderRadius: 8,
+                    background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)",
+                    color: "#fff", fontSize: 12, resize: "none", height: 60, marginBottom: 10
+                  }} />
+                <div style={{
+                  display: "flex", justifyContent: "space-between", marginBottom: 12,
+                  fontSize: 15, fontWeight: 700
+                }}>
+                  <span>Jami:</span>
+                  <span style={{ color: "#ff6b2b" }}>{fmt(cart.reduce((s, c) => s + c.price * c.qty, 0))}</span>
+                </div>
+                <button onClick={submitOrder} style={{
+                  width: "100%", padding: "13px 0", borderRadius: 10,
+                  background: "linear-gradient(90deg, #ff6b2b, #e74c3c)",
+                  border: "none", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer"
+                }}>✓ Buyurtma berish</button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── ADMIN VIEW ────────────────────────────────────────────────────────────────
+function AdminView({ tables, menu, orders, onAddTable, onRemoveTable, onUpdateMenu, onAddMenuItem, onDeleteMenuItem, onOrderAction, onLogout }) {
+  const [tab, setTab] = useState("orders");
+  const [editItem, setEditItem] = useState(null);
+  const [newItem, setNewItem] = useState({ category: "🍕 Klassik", name: "", price: "", desc: "" });
+  const [showAddMenu, setShowAddMenu] = useState(false);
+
+  const activeOrders = orders.filter(o => o.status === "pending" || o.status === "confirmed");
+  const paidOrders = orders.filter(o => o.status === "paid");
+
+  const statusColor = { pending: "#ffa500", confirmed: "#3b82f6", paid: "#22c55e", cancelled: "#ef4444" };
+  const statusLabel = { pending: "Yangi", confirmed: "Tasdiqlangan", paid: "To'landi", cancelled: "Bekor" };
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#0a0a0f", color: "#fff", fontFamily: "Georgia, serif" }}>
+      {/* Header */}
+      <div style={{
+        background: "linear-gradient(90deg, #0f0f1a, #1a0a2e)",
+        borderBottom: "1px solid rgba(139,92,246,0.2)",
+        padding: "16px 24px", display: "flex", justifyContent: "space-between", alignItems: "center"
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ fontSize: 28 }}>🍕</span>
+          <div>
+            <div style={{ color: "#a78bfa", fontWeight: 700, fontSize: 18 }}>PizzaHouse Admin</div>
+            <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 11 }}>Boshqaruv paneli</div>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          {[["orders", "📋 Buyurtmalar"], ["tables", "🪑 Stollar"], ["menu", "🍕 Menyu"], ["stats", "📊 Hisobot"]].map(([k, l]) => (
+            <button key={k} onClick={() => setTab(k)} style={{
+              padding: "8px 16px", borderRadius: 8, border: "none", cursor: "pointer",
+              background: tab === k ? "#7c3aed" : "rgba(255,255,255,0.07)",
+              color: tab === k ? "#fff" : "rgba(255,255,255,0.5)", fontSize: 13, fontWeight: 600
+            }}>{l}</button>
+          ))}
+          <button onClick={onLogout} style={{
+            background: "rgba(255,255,255,0.07)", border: "none", color: "rgba(255,255,255,0.5)",
+            padding: "8px 14px", borderRadius: 8, cursor: "pointer", fontSize: 13, marginLeft: 8
+          }}>Chiqish</button>
+        </div>
+      </div>
+
+      <div style={{ padding: 24, maxWidth: 1200, margin: "0 auto" }}>
+
+        {/* ORDERS TAB */}
+        {tab === "orders" && (
+          <div>
+            <h2 style={{ color: "#a78bfa", marginBottom: 20, fontSize: 22 }}>Faol buyurtmalar ({activeOrders.length})</h2>
+            {activeOrders.length === 0 ? (
+              <div style={{ textAlign: "center", padding: 60, color: "rgba(255,255,255,0.3)" }}>
+                <div style={{ fontSize: 48, marginBottom: 12 }}>📭</div>
+                <p>Hozircha buyurtma yo'q</p>
+              </div>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 }}>
+                {activeOrders.sort((a, b) => b.createdAt - a.createdAt).map(o => (
+                  <div key={o.id} style={{
+                    background: "rgba(255,255,255,0.04)", border: `1px solid ${statusColor[o.status]}44`,
+                    borderRadius: 16, padding: 20, position: "relative"
+                  }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+                      <div>
+                        <span style={{ color: "#a78bfa", fontWeight: 700, fontSize: 16 }}>
+                          Stol {tables.find(t => t.id === o.tableId)?.number || "?"}
+                        </span>
+                        <span style={{
+                          marginLeft: 10, fontSize: 11, padding: "3px 8px", borderRadius: 20,
+                          background: statusColor[o.status] + "22", color: statusColor[o.status]
+                        }}>{statusLabel[o.status]}</span>
+                      </div>
+                      <div style={{ color: "rgba(255,255,255,0.3)", fontSize: 11 }}>
+                        {new Date(o.createdAt).toLocaleTimeString("uz-UZ")}
+                      </div>
+                    </div>
+
+                    <div style={{ marginBottom: 12 }}>
+                      {o.items.map((it, i) => (
+                        <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid rgba(255,255,255,0.05)", fontSize: 13 }}>
+                          <span style={{ color: "rgba(255,255,255,0.8)" }}>{it.name} <span style={{ color: "#a78bfa" }}>×{it.qty}</span></span>
+                          <span style={{ color: "rgba(255,255,255,0.5)" }}>{fmt(it.price * it.qty)}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {o.note && <div style={{ background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: "8px 10px", fontSize: 12, color: "rgba(255,255,255,0.5)", marginBottom: 12 }}>💬 {o.note}</div>}
+
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                      <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>Jami:</span>
+                      <span style={{ color: "#7c3aed", fontWeight: 700, fontSize: 18 }}>{fmt(o.total)}</span>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                      <button onClick={() => onOrderAction(o.id, "paid")} style={{
+                        padding: "10px 0", borderRadius: 8, border: "none", cursor: "pointer",
+                        background: "rgba(34,197,94,0.15)", color: "#22c55e", fontWeight: 600, fontSize: 12
+                      }}>✓ To'landi</button>
+                      <button onClick={() => onOrderAction(o.id, "cancelled")} style={{
+                        padding: "10px 0", borderRadius: 8, border: "none", cursor: "pointer",
+                        background: "rgba(245,158,11,0.15)", color: "#f59e0b", fontWeight: 600, fontSize: 12
+                      }}>↩ Qaytarish</button>
+                      <button onClick={() => onOrderAction(o.id, "delete")} style={{
+                        padding: "10px 0", borderRadius: 8, border: "none", cursor: "pointer",
+                        background: "rgba(239,68,68,0.15)", color: "#ef4444", fontWeight: 600, fontSize: 12
+                      }}>🗑 O'chirish</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {paidOrders.length > 0 && (
+              <div style={{ marginTop: 32 }}>
+                <h3 style={{ color: "rgba(255,255,255,0.4)", marginBottom: 12, fontSize: 16 }}>To'langan buyurtmalar ({paidOrders.length})</h3>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  {paidOrders.slice(-10).reverse().map(o => (
+                    <div key={o.id} style={{
+                      background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.2)",
+                      borderRadius: 10, padding: "10px 14px", fontSize: 12
+                    }}>
+                      <div style={{ color: "#22c55e", fontWeight: 600 }}>Stol {tables.find(t => t.id === o.tableId)?.number}</div>
+                      <div style={{ color: "rgba(255,255,255,0.5)" }}>{fmt(o.total)}</div>
+                      <button onClick={() => onOrderAction(o.id, "delete")} style={{
+                        marginTop: 6, background: "none", border: "none", color: "rgba(239,68,68,0.5)",
+                        cursor: "pointer", fontSize: 11
+                      }}>O'chirish</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TABLES TAB */}
+        {tab === "tables" && (
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <h2 style={{ color: "#a78bfa", fontSize: 22 }}>Stollar ({tables.length} ta)</h2>
+              <div style={{ display: "flex", gap: 10 }}>
+                <button onClick={onRemoveTable} disabled={tables.length <= 1} style={{
+                  padding: "10px 20px", borderRadius: 10, border: "none", cursor: tables.length <= 1 ? "not-allowed" : "pointer",
+                  background: tables.length <= 1 ? "rgba(255,255,255,0.05)" : "rgba(239,68,68,0.15)",
+                  color: tables.length <= 1 ? "rgba(255,255,255,0.2)" : "#ef4444", fontWeight: 600
+                }}>− Stol olish</button>
+                <button onClick={onAddTable} style={{
+                  padding: "10px 20px", borderRadius: 10, border: "none", cursor: "pointer",
+                  background: "rgba(124,58,237,0.2)", color: "#a78bfa", fontWeight: 600
+                }}>+ Stol qo'shish</button>
+              </div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 16 }}>
+              {tables.map(t => {
+                const tOrders = orders.filter(o => o.tableId === t.id && (o.status === "pending" || o.status === "confirmed"));
+                const total = tOrders.reduce((s, o) => s + o.total, 0);
+                return (
+                  <div key={t.id} style={{
+                    background: tOrders.length > 0 ? "rgba(124,58,237,0.15)" : "rgba(255,255,255,0.04)",
+                    border: `2px solid ${tOrders.length > 0 ? "rgba(124,58,237,0.4)" : "rgba(255,255,255,0.08)"}`,
+                    borderRadius: 16, padding: "24px 16px", textAlign: "center"
+                  }}>
+                    <div style={{ fontSize: 40, marginBottom: 8 }}>🪑</div>
+                    <div style={{ fontWeight: 700, fontSize: 18, color: tOrders.length > 0 ? "#a78bfa" : "#fff" }}>Stol {t.number}</div>
+                    <div style={{ fontSize: 12, color: tOrders.length > 0 ? "#ffa500" : "rgba(255,255,255,0.3)", marginTop: 4 }}>
+                      {tOrders.length > 0 ? `${tOrders.length} buyurtma • ${fmt(total)}` : "Bo'sh"}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* MENU TAB */}
+        {tab === "menu" && (
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <h2 style={{ color: "#a78bfa", fontSize: 22 }}>Menyu ({menu.length} ta taom)</h2>
+              <button onClick={() => setShowAddMenu(!showAddMenu)} style={{
+                padding: "10px 20px", borderRadius: 10, border: "none", cursor: "pointer",
+                background: showAddMenu ? "rgba(239,68,68,0.2)" : "rgba(124,58,237,0.2)",
+                color: showAddMenu ? "#ef4444" : "#a78bfa", fontWeight: 600
+              }}>{showAddMenu ? "✕ Yopish" : "+ Yangi taom"}</button>
+            </div>
+
+            {showAddMenu && (
+              <div style={{
+                background: "rgba(124,58,237,0.1)", border: "1px solid rgba(124,58,237,0.3)",
+                borderRadius: 16, padding: 20, marginBottom: 20,
+                display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr auto", gap: 12, alignItems: "end"
+              }}>
+                <div>
+                  <label style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", display: "block", marginBottom: 6 }}>Kategoriya</label>
+                  <select value={newItem.category} onChange={e => setNewItem({ ...newItem, category: e.target.value })}
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: 8, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", color: "#fff", fontSize: 13 }}>
+                    {["🍕 Klassik", "🔥 Premium", "🥤 Ichimliklar", "🍰 Desert"].map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                {[["name", "Nomi"], ["price", "Narx (so'm)"], ["desc", "Tavsif"]].map(([k, l]) => (
+                  <div key={k}>
+                    <label style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", display: "block", marginBottom: 6 }}>{l}</label>
+                    <input value={newItem[k]} onChange={e => setNewItem({ ...newItem, [k]: e.target.value })}
+                      placeholder={l} type={k === "price" ? "number" : "text"}
+                      style={{ width: "100%", padding: "10px 12px", borderRadius: 8, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", color: "#fff", fontSize: 13 }} />
+                  </div>
+                ))}
+                <button onClick={() => {
+                  if (!newItem.name || !newItem.price) return;
+                  onAddMenuItem({ ...newItem, price: Number(newItem.price) });
+                  setNewItem({ category: "🍕 Klassik", name: "", price: "", desc: "" });
+                  setShowAddMenu(false);
+                }} style={{
+                  padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer",
+                  background: "#7c3aed", color: "#fff", fontWeight: 700
+                }}>Qo'shish</button>
+              </div>
+            )}
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 12 }}>
+              {menu.map(item => (
+                <div key={item.id} style={{
+                  background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
+                  borderRadius: 12, padding: 16
+                }}>
+                  {editItem?.id === item.id ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {[["name", "Nomi"], ["price", "Narx"], ["desc", "Tavsif"]].map(([k, l]) => (
+                        <input key={k} value={editItem[k]} onChange={e => setEditItem({ ...editItem, [k]: e.target.value })}
+                          placeholder={l} type={k === "price" ? "number" : "text"}
+                          style={{ padding: "8px 10px", borderRadius: 8, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(124,58,237,0.4)", color: "#fff", fontSize: 13, width: "100%" }} />
+                      ))}
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button onClick={() => { onUpdateMenu({ ...editItem, price: Number(editItem.price) }); setEditItem(null); }}
+                          style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "none", cursor: "pointer", background: "#7c3aed", color: "#fff", fontWeight: 600 }}>✓ Saqlash</button>
+                        <button onClick={() => setEditItem(null)}
+                          style={{ padding: "8px 14px", borderRadius: 8, border: "none", cursor: "pointer", background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)" }}>✕</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                        <div style={{ fontWeight: 700, fontSize: 15 }}>{item.name}</div>
+                        <span style={{ fontSize: 10, color: "#a78bfa", background: "rgba(124,58,237,0.15)", padding: "2px 8px", borderRadius: 20 }}>{item.category}</span>
+                      </div>
+                      <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 12, marginBottom: 8 }}>{item.desc}</div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div style={{ color: "#7c3aed", fontWeight: 700, fontSize: 16 }}>{fmt(item.price)}</div>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button onClick={() => setEditItem(item)} style={{
+                            padding: "6px 12px", borderRadius: 7, border: "none", cursor: "pointer",
+                            background: "rgba(124,58,237,0.2)", color: "#a78bfa", fontSize: 12, fontWeight: 600
+                          }}>✏️ Tahrir</button>
+                          <button onClick={() => onDeleteMenuItem(item.id)} style={{
+                            padding: "6px 12px", borderRadius: 7, border: "none", cursor: "pointer",
+                            background: "rgba(239,68,68,0.15)", color: "#ef4444", fontSize: 12, fontWeight: 600
+                          }}>🗑</button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* STATS TAB */}
+        {tab === "stats" && (
+          <div>
+            <h2 style={{ color: "#a78bfa", marginBottom: 20, fontSize: 22 }}>Hisobot</h2>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 24 }}>
+              {[
+                { label: "Jami buyurtmalar", val: orders.length, icon: "📋", color: "#7c3aed" },
+                { label: "To'langan", val: orders.filter(o => o.status === "paid").length, icon: "✅", color: "#22c55e" },
+                { label: "Bekor qilingan", val: orders.filter(o => o.status === "cancelled").length, icon: "❌", color: "#ef4444" },
+                { label: "Jami daromad", val: fmt(orders.filter(o => o.status === "paid").reduce((s, o) => s + o.total, 0)), icon: "💰", color: "#ffa500" },
+              ].map((s, i) => (
+                <div key={i} style={{
+                  background: "rgba(255,255,255,0.04)", border: `1px solid ${s.color}33`,
+                  borderRadius: 16, padding: "20px 24px"
+                }}>
+                  <div style={{ fontSize: 32, marginBottom: 8 }}>{s.icon}</div>
+                  <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 12, marginBottom: 4 }}>{s.label}</div>
+                  <div style={{ color: s.color, fontWeight: 700, fontSize: 22 }}>{s.val}</div>
+                </div>
+              ))}
+            </div>
+
+            <h3 style={{ color: "rgba(255,255,255,0.5)", marginBottom: 12, fontSize: 16 }}>Stol bo'yicha</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 10 }}>
+              {tables.map(t => {
+                const tPaid = orders.filter(o => o.tableId === t.id && o.status === "paid");
+                return (
+                  <div key={t.id} style={{
+                    background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
+                    borderRadius: 12, padding: "16px", textAlign: "center"
+                  }}>
+                    <div style={{ fontSize: 28, marginBottom: 6 }}>🪑</div>
+                    <div style={{ fontWeight: 700, color: "#a78bfa" }}>Stol {t.number}</div>
+                    <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 12, marginTop: 4 }}>{tPaid.length} buyurtma</div>
+                    <div style={{ color: "#22c55e", fontWeight: 600, marginTop: 2, fontSize: 14 }}>
+                      {fmt(tPaid.reduce((s, o) => s + o.total, 0))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── MAIN APP ──────────────────────────────────────────────────────────────────
+export default function App() {
+  const [role, setRole] = useState(null);
+  const [tables, setTables] = useState([]);
+  const [menu, setMenu] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [toast, setToast] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const showToast = (msg, type = "success") => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  // Load from storage
+  useEffect(() => {
+    (async () => {
+      const t = await DB.get("tables");
+      const m = await DB.get("menu");
+      const o = await DB.get("orders");
+      setTables(t || Array.from({ length: 10 }, (_, i) => ({ id: i + 1, number: i + 1 })));
+      setMenu(m || DEFAULT_MENU);
+      setOrders(o || []);
+      setLoading(false);
+    })();
+  }, []);
+
+  // Save changes
+  const saveTables = async (t) => { setTables(t); await DB.set("tables", t); };
+  const saveMenu = async (m) => { setMenu(m); await DB.set("menu", m); };
+  const saveOrders = async (o) => { setOrders(o); await DB.set("orders", o); };
+
+  const addTable = async () => {
+    const maxNum = Math.max(...tables.map(t => t.number), 0);
+    const newId = Date.now();
+    const t = [...tables, { id: newId, number: maxNum + 1 }];
+    await saveTables(t);
+    showToast(`Stol ${maxNum + 1} qo'shildi`);
+  };
+
+  const removeTable = async () => {
+    if (tables.length <= 1) return;
+    const t = [...tables];
+    t.pop();
+    await saveTables(t);
+    showToast("Stol o'chirildi", "info");
+  };
+
+  const addOrder = async ({ tableId, items, note, total }) => {
+    const o = [...orders, {
+      id: Date.now(), tableId, items, note, total,
+      status: "pending", createdAt: Date.now()
+    }];
+    await saveOrders(o);
+    showToast("Buyurtma qabul qilindi! ✓");
+  };
+
+  const orderAction = async (id, action) => {
+    let o;
+    if (action === "delete") {
+      o = orders.filter(ord => ord.id !== id);
+      showToast("Buyurtma o'chirildi", "info");
+    } else {
+      o = orders.map(ord => ord.id === id ? { ...ord, status: action } : ord);
+      showToast(action === "paid" ? "To'lov belgilandi ✓" : "Buyurtma qaytarildi", action === "paid" ? "success" : "info");
+    }
+    await saveOrders(o);
+  };
+
+  const updateMenuItem = async (item) => {
+    const m = menu.map(i => i.id === item.id ? item : i);
+    await saveMenu(m);
+    showToast("Menyu yangilandi ✓");
+  };
+
+  const addMenuItem = async (item) => {
+    const m = [...menu, { ...item, id: Date.now() }];
+    await saveMenu(m);
+    showToast("Yangi taom qo'shildi ✓");
+  };
+
+  const deleteMenuItem = async (id) => {
+    const m = menu.filter(i => i.id !== id);
+    await saveMenu(m);
+    showToast("Taom o'chirildi", "info");
+  };
+
+  if (loading) return (
+    <div style={{ minHeight: "100vh", background: "#0f0500", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ textAlign: "center" }}>
+        <div style={{ fontSize: 64, animation: "pulse 1s infinite" }}>🍕</div>
+        <p style={{ color: "rgba(255,255,255,0.4)", marginTop: 16, fontFamily: "Georgia" }}>Yuklanmoqda...</p>
+      </div>
+    </div>
+  );
+
+  return (
+    <>
+      {toast && <Toast msg={toast.msg} type={toast.type} />}
+      {!role && <LoginPage onLogin={setRole} />}
+      {role === "waiter" && (
+        <WaiterView tables={tables} menu={menu} orders={orders}
+          onOrder={addOrder} onLogout={() => setRole(null)} />
+      )}
+      {role === "admin" && (
+        <AdminView tables={tables} menu={menu} orders={orders}
+          onAddTable={addTable} onRemoveTable={removeTable}
+          onUpdateMenu={updateMenuItem} onAddMenuItem={addMenuItem}
+          onDeleteMenuItem={deleteMenuItem} onOrderAction={orderAction}
+          onLogout={() => setRole(null)} />
+      )}
+    </>
+  );
+}
